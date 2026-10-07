@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reo Resource Builder</title>
+<style>
+/* layout: one narrow column, a big drop bay on top, the built resource reported below it */
+:root {
+  --bg: #f3f4f1; --panel: #ffffff; --ink: #1b2023; --mute: #5f6a70; --line: #d5d9d4;
+  --accent: #0b6e63; --accent-ink: #ffffff; --warn: #9a5a00; --warn-bg: #fdf3dc; --code: #e9ece7;
+  --ui: "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif; --mono: Consolas, "Cascadia Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14181a; --panel: #1c2225; --ink: #e8ecea; --mute: #98a3a6; --line: #313a3e;
+    --accent: #3cc4b2; --accent-ink: #06211e; --warn: #f0c36a; --warn-bg: #33290f; --code: #262e32; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.7 var(--ui); padding-inline: 16px; padding-block: 32px 64px; }
+main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1 { font-size: 26px; margin: 0; line-height: 1.3; }
+h2 { font-size: 15px; margin: 0 0 8px; color: var(--mute); font-weight: 600; }
+p { margin: 0; }
+.lead { color: var(--mute); }
+#drop { border: 2px dashed var(--line); border-radius: 14px; background: var(--panel); padding: 36px 20px; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; transition: border-color .15s; }
+#drop.over { border-color: var(--accent); }
+#drop strong { font-size: 19px; }
+.types { direction: ltr; font: 13px var(--mono); color: var(--mute); }
+.row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; }
+.btn, button { font: 600 15px var(--ui); border-radius: 9px; padding: 9px 18px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.btn.main, button.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-within, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+#status { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+#result { display: flex; flex-direction: column; gap: 20px; }
+.head { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; justify-content: space-between; }
+.head label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--mute); min-width: 0; }
+#resname { direction: ltr; font: 16px var(--mono); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); width: 220px; max-width: 100%; }
+code, pre { font-family: var(--mono); direction: ltr; }
+code { background: var(--code); padding: 2px 8px; border-radius: 6px; font-size: 14px; }
+pre { margin: 0; background: var(--code); border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.6; overflow-x: auto; max-height: 300px; text-align: left; }
+#spawn { display: flex; flex-wrap: wrap; gap: 6px; direction: ltr; justify-content: flex-end; }
+#warnbox { background: var(--warn-bg); border-radius: 10px; padding: 12px 16px; }
+#warnbox h2 { color: var(--warn); }
+#warns { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+.steps { color: var(--mute); font-size: 15px; }
+details summary { cursor: pointer; color: var(--mute); font-size: 15px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Reo Resource Builder</h1>
+    <p class="lead">اسحب ملف السيارة مثل ما هو، وتطلع لك ريسورس فايف ام كامل ومرتب. كل شي يصير على جهازك وما ينرفع شي للنت.</p>
+  </header>
+
+  <div id="drop">
+    <strong>اسحب الملفات أو المجلد هنا</strong>
+    <span class="types">dlc.rpf · .zip · .yft .ytd .meta · folder</span>
+    <div class="row">
+      <label class="btn main">اختر ملفات<input id="pick" type="file" multiple></label>
+      <label class="btn">اختر مجلد<input id="pickdir" type="file" webkitdirectory></label>
+    </div>
+  </div>
+
+  <div id="status" hidden></div>
+
+  <section id="result" hidden>
+    <div class="head">
+      <label>اسم الريسورس<input id="resname" type="text" spellcheck="false" autocomplete="off"></label>
+      <button id="dl" class="main" type="button">تنزيل الريسورس (zip)</button>
+    </div>
+    <p id="empty" hidden>ما لقيت أي ملف سيارة أو ماب داخل اللي سحبته. شوف الملاحظات تحت.</p>
+    <div id="ok">
+      <p><span id="summary"></span>. فك الملف المضغوط داخل مجلد <code>resources</code> وأضف هذا السطر في <code>server.cfg</code>:</p>
+      <div class="row" style="justify-content:flex-start;margin-top:8px"><code id="ensure"></code><button id="copy" type="button">نسخ</button></div>
+    </div>
+    <div id="spawnbox"><h2>أسماء السبون</h2><div id="spawn"></div></div>
+    <div id="warnbox"><h2>ملاحظات ونواقص</h2><ul id="warns"></ul></div>
+    <div><h2>محتوى الريسورس</h2><pre id="tree"></pre></div>
+    <details><summary>fxmanifest.lua</summary><pre id="manifest"></pre></details>
+    <details id="ignbox"><summary>ملفات تم تجاهلها لأن فايف ام ما يحتاجها</summary><pre id="ign"></pre></details>
+  </section>
+
+  <p class="steps">يفك أرشيفات RPF حتى لو داخلها أرشيفات ثانية، ويتعرف على ملفات الميتا من محتواها مو من اسمها، ويضيف ملفات الصوت اذا موجودة. ملفات RAR و 7z لازم تفكها أول وتسحب المجلد.</p>
+</main>
+<script>(function (root) {
+'use strict';
+const STREAM_EXT = new Set(['yft','ytd','ydr','ydd','ybn','ymap','ytyp','ycd','ynv','ynd','ypt']);
+const KINDS = {
+  CHandlingDataMgr: ['HANDLING_FILE', 1],
+  CVehicleMetadataMgr: ['VEHICLE_LAYOUTS_FILE', 2],
+  CWeaponInfoBlob: ['WEAPONINFO_FILE', 3],
+  CVehicleModelInfo__InitDataList: ['VEHICLE_METADATA_FILE', 4],
+  CVehicleModelInfoVarGlobal: ['CARCOLS_FILE', 5],
+  CVehicleModelInfoVariation: ['VEHICLE_VARIANT_FILE', 6],
+  CWeaponComponentInfoBlob: ['WEAPONCOMPONENTSINFO_FILE', 7],
+  CWeaponAnimationsSets: ['WEAPON_ANIMATIONS_FILE', 8],
+  CWeaponModelInfo__InitDataList: ['WEAPON_METADATA_FILE', 9],
+  CPedModelInfo__InitDataList: ['PED_METADATA_FILE', 10]
+};
+const NAME_FALLBACK = [[/handling/, 'CHandlingDataMgr'], [/carvariations/, 'CVehicleModelInfoVariation'],
+  [/carcols/, 'CVehicleModelInfoVarGlobal'], [/vehiclelayouts/, 'CVehicleMetadataMgr'], [/vehicles/, 'CVehicleModelInfo__InitDataList']];
+const AUDIO_DAT = { 151: 'AUDIO_GAMEDATA', 54: 'AUDIO_SOUNDDATA', 10: 'AUDIO_SYNTHDATA' };
+
+async function parseRpf(b, label, out, warns, depth) {
+  const bad = m => warns.push(label + ': ' + m);
+  if (b.length < 32) return bad('الملف غير كامل (حجمه صغير جداً).');
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (dv.getUint32(0, true) !== 0x52504637) return bad('ليس أرشيف RPF7 صالح.');
+  const n = dv.getUint32(4, true), nlRaw = dv.getUint32(8, true), enc = dv.getUint32(12, true);
+  const shift = (nlRaw >>> 28) & 7, nl = nlRaw & 0x0FFFFFFF;
+  if (enc !== 0x4E45504F && enc !== 0) return bad('الأرشيف مشفّر (ملف لعبة أصلي أو مقفول من صاحبه) وما ينفك هنا. افتحه بـ OpenIV واسحب الملفات اللي داخله بدله.');
+  const ns = 16 + n * 16;
+  if (!n || ns + nl > b.length) return bad('الملف غير كامل، جدول الملفات مقطوع.');
+  const name = o => { let s = ns + (o << shift), e = s; while (e < ns + nl && b[e]) e++; let r = ''; for (let i = s; i < e; i++) r += String.fromCharCode(b[i]); return r; };
+  const seen = new Set([0]);
+  const walk = async (start, count, path) => {
+    for (let i = start; i < start + count && i < n; i++) {
+      if (seen.has(i)) continue; seen.add(i);
+      const o = 16 + i * 16;
+      const y = dv.getUint32(o, true), x = dv.getUint32(o + 4, true), a = dv.getUint32(o + 8, true), c = dv.getUint32(o + 12, true);
+      if (x === 0x7FFFFF00) { await walk(a, c, path + name(y) + '/'); continue; }
+      const nm = name(y & 0xFFFF), full = path + nm;
+      let size = ((y >>> 16) | ((x & 0xFF) << 16)) >>> 0;
+      const off = ((x >>> 8) & 0x7FFFFF) * 512;
+      try {
+        let data;
+        if ((x & 0x80000000) === 0) {
+          if (c === 1) { warns.push(full + ': ملف مشفّر، تم تخطيه.'); continue; }
+          const len = size || a;
+          if (off + len > b.length) { warns.push(full + ': مقطوع، الأرشيف غير كامل.'); continue; }
+          data = b.subarray(off, off + len);
+          if (size) data = await inflate(data);
+        } else {
+          if (size === 0xFFFFFF) size = (b[off + 7] | (b[off + 14] << 8) | (b[off + 5] << 16) | (b[off + 2] << 24)) >>> 0;
+          if (size < 16 || off + size > b.length) { warns.push(full + ': مقطوع، الأرشيف غير كامل.'); continue; }
+          data = new Uint8Array(size);
+          data.set(b.subarray(off + 16, off + size), 16);
+          const h = new DataView(data.buffer);
+          h.setUint32(0, 0x37435352, true);
+          h.setUint32(4, (((a >>> 28) & 0xF) << 4) | ((c >>> 28) & 0xF), true);
+          h.setUint32(8, a, true); h.setUint32(12, c, true);
+        }
+        if (/\.rpf$/i.test(nm) && depth < 6) await parseRpf(data, full, out, warns, depth + 1);
+        else out.push({ path: full, data });
+      } catch (e) { warns.push(full + ': تعذّر فكه (' + e.message + ').'); }
+    }
+  };
+  await walk(dv.getUint32(24, true), dv.getUint32(28, true), label + '/');
+}
+
+async function inflate(d) {
+  const st = new Blob([d]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(st).arrayBuffer());
+}
+async function unzip(d) {
+  const dv = new DataView(d.buffer, d.byteOffset, d.byteLength), out = [];
+  let e = d.length - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054B50) e--;
+  if (e < 0) throw new Error('eocd');
+  const cnt = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true);
+  if (p === 0xFFFFFFFF || cnt === 0xFFFF) throw new Error('zip64');
+  for (let i = 0; i < cnt; i++) {
+    if (dv.getUint32(p, true) !== 0x02014B50) throw new Error('cd');
+    const method = dv.getUint16(p + 10, true), cs = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true);
+    const lo = dv.getUint32(p + 42, true), nm = new TextDecoder().decode(d.subarray(p + 46, p + 46 + nl));
+    p += 46 + nl + dv.getUint16(p + 30, true) + dv.getUint16(p + 32, true);
+    if (nm.endsWith('/')) continue;
+    const ds = lo + 30 + dv.getUint16(lo + 26, true) + dv.getUint16(lo + 28, true), raw = d.subarray(ds, ds + cs);
+    if (raw.length < cs) throw new Error('cut');
+    if (method === 0) out.push([nm, raw]); else if (method === 8) out.push([nm, await inflate(raw)]); else throw new Error('method');
+  }
+  return out;
+}
+let CT;
+function crc32(d) {
+  if (!CT) { CT = new Uint32Array(256); for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CT[i] = c; } }
+  let c = -1; for (let i = 0; i < d.length; i++) c = CT[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ -1) >>> 0;
+}
+function zipParts(files, prefix) {
+  const parts = [], cd = []; let off = 0;
+  for (const [path, data] of files) {
+    const nm = new TextEncoder().encode(prefix + path), crc = crc32(data);
+    const h = new Uint8Array(30 + nm.length), v = new DataView(h.buffer);
+    v.setUint32(0, 0x04034B50, true); v.setUint16(4, 20, true); v.setUint16(6, 0x800, true);
+    v.setUint16(12, 0x21, true); v.setUint32(14, crc, true); v.setUint32(18, data.length, true); v.setUint32(22, data.length, true); v.setUint16(26, nm.length, true); h.set(nm, 30);
+    const c = new Uint8Array(46 + nm.length), w = new DataView(c.buffer);
+    w.setUint32(0, 0x02014B50, true); w.setUint16(4, 20, true); w.setUint16(6, 20, true); w.setUint16(8, 0x800, true);
+    w.setUint16(14, 0x21, true); w.setUint32(16, crc, true); w.setUint32(20, data.length, true); w.setUint32(24, data.length, true); w.setUint16(28, nm.length, true); w.setUint32(42, off, true); c.set(nm, 46);
+    parts.push(h, data); cd.push(c); off += h.length + data.length;
+  }
+  const cl = cd.reduce((s, c) => s + c.length, 0), e = new Uint8Array(22), x = new DataView(e.buffer);
+  x.setUint32(0, 0x06054B50, true); x.setUint16(8, cd.length, true); x.setUint16(10, cd.length, true); x.setUint32(12, cl, true); x.setUint32(16, off, true);
+  return parts.concat(cd, [e]);
+}
+async function expand(inputs, warns) {
+  const out = [];
+  const go = async (path, d, depth) => {
+    const m = d.length >= 4 ? (d[0] | d[1] << 8 | d[2] << 16 | d[3] << 24) >>> 0 : 0;
+    if (m === 0x04034B50 && depth < 4) {
+      let z;
+      try { z = await unzip(d); } catch (e) { warns.push(path + ': ملف الضغط تالف أو غير كامل. جرّب تفكه على جهازك وتسحب المجلد.'); return; }
+      for (const [k, v] of z) await go(path + '/' + k, v, depth + 1);
+    } else if (m === 0x52504637) await parseRpf(d, path, out, warns, 0);
+    else if (m === 0x21726152 || m === 0xAFBC7A37) warns.push(path + ': ملفات RAR و 7z ما تنفك هنا. فك الضغط على جهازك واسحب المجلد نفسه.');
+    else out.push({ path, data: d });
+  };
+  for (const f of inputs) await go(f.path, f.data, 0);
+  return out;
+}
+
+function text(d) {
+  const s = d.subarray(0, 4 << 20);
+  if (s[0] === 0xFF && s[1] === 0xFE) return new TextDecoder('utf-16le').decode(s);
+  return new TextDecoder('utf-8').decode(s);
+}
+function rootTag(t) {
+  const m = t.replace(/<\?[\s\S]*?\?>/g, '').replace(/<!--[\s\S]*?-->/g, '').match(/<([A-Za-z_][\w]*)[\s>\/]/);
+  return m ? m[1] : '';
+}
+const all = (t, tag) => [...t.matchAll(new RegExp('<' + tag + '>\\s*([^<\\s]+)\\s*</' + tag + '>', 'gi'))].map(m => m[1]);
+
+function build(leaves, resName) {
+  const files = new Map(), warns = [], ignored = [], dataFiles = [], listed = [];
+  const stream = new Map(), packs = new Set();
+  const models = [], handlingIds = [], handlingNames = new Set(), txds = new Map();
+  let hasVehMeta = false, hasHandling = false;
+  const uniq = p => { if (!files.has(p)) return p; const i = p.lastIndexOf('.'); let k = 2; while (files.has(p.slice(0, i) + '_' + k + p.slice(i))) k++; return p.slice(0, i) + '_' + k + p.slice(i); };
+  for (const f of leaves) {
+    const seg = f.path.split('/'), nm = seg[seg.length - 1], low = nm.toLowerCase(), ext = low.slice(low.lastIndexOf('.') + 1);
+    if (STREAM_EXT.has(ext)) {
+      if (stream.has(low)) { warns.push('الملف ' + nm + ' مكرر، أخذت أول نسخة فقط.'); continue; }
+      stream.set(low, f.data); files.set('stream/' + nm, f.data); continue;
+    }
+    if (ext === 'awc') {
+      const pack = seg.length > 1 ? seg[seg.length - 2].replace(/\.rpf$/i, '') : 'dlc_' + resName;
+      packs.add(pack); files.set(uniq('audio/sfx/' + pack + '/' + nm), f.data); continue;
+    }
+    let m = low.match(/\.dat(\d+)\.(rel|nametable)$/);
+    if (m) {
+      if (!AUDIO_DAT[m[1]]) { ignored.push(f.path); continue; }
+      const p = uniq('audio/' + nm); files.set(p, f.data); listed.push(p);
+      if (m[2] === 'rel') dataFiles.push([20, AUDIO_DAT[m[1]], p.replace(/\d+\.rel$/i, '')]);
+      continue;
+    }
+    if (ext === 'meta' || ext === 'xml') {
+      const t = text(f.data);
+      let kind = rootTag(t);
+      if (!KINDS[kind]) { kind = ''; if (ext === 'meta') for (const [re, k] of NAME_FALLBACK) if (re.test(low)) { kind = k; break; } }
+      if (!kind) { ignored.push(f.path); continue; }
+      const p = uniq('data/' + nm); files.set(p, f.data); listed.push(p);
+      dataFiles.push([KINDS[kind][1], KINDS[kind][0], p]);
+      if (kind === 'CVehicleModelInfo__InitDataList') {
+        hasVehMeta = true;
+        for (const it of t.split(/<Item[\s>]/i)) { const mn = all(it, 'modelName')[0]; if (mn) { models.push(mn); txds.set(mn.toLowerCase(), (all(it, 'txdName')[0] || mn).toLowerCase()); } }
+        handlingIds.push(...all(t, 'handlingId'));
+      }
+      if (kind === 'CHandlingDataMgr') { hasHandling = true; all(t, 'handlingName').forEach(h => handlingNames.add(h.toLowerCase())); }
+      continue;
+    }
+    ignored.push(f.path);
+  }
+  for (const mn of models) {
+    const l = mn.toLowerCase();
+    if (!stream.has(l + '.yft')) warns.push('السيارة ' + mn + ' موجودة في vehicles.meta لكن ملف الموديل ' + l + '.yft ناقص. ما راح تطلع باللعبة.');
+    else if (!stream.has(l + '.ytd') && !stream.has(txds.get(l) + '.ytd')) warns.push('السيارة ' + mn + ' ناقصها ملف التكستشر (ytd)، بتطلع بدون ألوان.');
+  }
+  for (const h of new Set(handlingIds)) if (!handlingNames.has(h.toLowerCase()))
+    warns.push(hasHandling ? 'الهاندلنق ' + h + ' مو موجود في handling.meta.' : 'ملف handling.meta ناقص، والسيارة تطلب الهاندلنق ' + h + '. اذا مو اسم سيارة أصلية ما راح تمشي صح.');
+  let replace = [];
+  if (!hasVehMeta) replace = [...stream.keys()].filter(k => /\.yft$/.test(k) && !/_hi\.yft$/.test(k)).map(k => k.slice(0, -4));
+  if (replace.length) warns.push('ما فيه vehicles.meta، فالملفات بتشتغل كبديل (replace) فقط اذا اسمها نفس اسم سيارة أصلية باللعبة: ' + replace.join(', '));
+  for (const p of packs) dataFiles.push([21, 'AUDIO_WAVEPACK', 'audio/sfx/' + p]);
+  dataFiles.sort((a, b) => a[0] - b[0]);
+  let man = "fx_version 'cerulean'\ngame 'gta5'\n";
+  const fl = listed.map(p => "    '" + p + "'").concat([...packs].map(p => "    'audio/sfx/" + p + "/*.awc'"));
+  if (fl.length) man += '\nfiles {\n' + fl.join(',\n') + '\n}\n\n' + dataFiles.map(d => "data_file '" + d[1] + "' '" + d[2] + "'").join('\n') + '\n';
+  const empty = files.size === 0;
+  files.set('fxmanifest.lua', new TextEncoder().encode(man));
+  return { files, manifest: man, models, warns, ignored, empty, streamCount: stream.size, dataCount: dataFiles.length };
+}
+const api = { expand, build, zipParts };
+if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.RB = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>(function () {
+'use strict';
+const $ = id => document.getElementById(id);
+let leaves = [], expWarns = [], result = null, firstName = '';
+const clean = s => (s || '').toLowerCase().replace(/\.[a-z0-9]+$/, '').replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+const size = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const status = t => { $('status').textContent = t; $('status').hidden = !t; };
+
+function readEntry(en, path, out) {
+  return new Promise(res => {
+    if (en.isFile) en.file(f => { out.push({ file: f, path: path + f.name }); res(); }, () => res());
+    else {
+      const r = en.createReader(), all = [];
+      const more = () => r.readEntries(async es => {
+        if (!es.length) { for (const e of all) await readEntry(e, path + en.name + '/', out); return res(); }
+        all.push(...es); more();
+      }, () => res());
+      more();
+    }
+  });
+}
+async function take(list) {
+  if (!list.length) return;
+  status('جاري فك الملفات...');
+  $('result').hidden = true;
+  await new Promise(r => setTimeout(r, 30));
+  try {
+    const inputs = [];
+    for (const it of list) inputs.push({ path: it.path, data: new Uint8Array(await it.file.arrayBuffer()) });
+    expWarns = [];
+    leaves = await RB.expand(inputs, expWarns);
+    firstName = list[0].path.split('/')[0];
+    $('resname').value = '';
+    render(true);
+  } catch (e) {
+    status('صار خطأ أثناء القراءة: ' + e.message + '. اذا الملف كبير جداً جرّب تفكه وتسحب المجلد.');
+  }
+}
+function render(pickName) {
+  let name = clean($('resname').value);
+  result = RB.build(leaves, name || 'car');
+  if (pickName || !name) {
+    name = name || clean(result.models[0]) || clean(firstName) || 'mycar';
+    if (pickName) $('resname').value = name;
+    result = RB.build(leaves, name);
+  }
+  result.name = name;
+  status('');
+  $('result').hidden = false;
+  const warns = expWarns.concat(result.warns);
+  $('ok').hidden = result.empty;
+  $('empty').hidden = !result.empty;
+  $('dl').disabled = result.empty;
+  $('summary').textContent = result.streamCount + ' ملف موديل، ' + result.dataCount + ' ملف بيانات';
+  $('ensure').textContent = 'ensure ' + name;
+  const sp = $('spawn'); sp.textContent = '';
+  result.models.forEach(m => { const c = document.createElement('code'); c.textContent = m; sp.appendChild(c); });
+  $('spawnbox').hidden = !result.models.length;
+  const wl = $('warns'); wl.textContent = '';
+  warns.forEach(w => { const li = document.createElement('li'); li.textContent = w; li.dir = 'auto'; wl.appendChild(li); });
+  $('warnbox').hidden = !warns.length;
+  $('tree').textContent = [...result.files].map(([p, d]) => name + '/' + p + '   ' + size(d.length)).sort().join('\n');
+  $('manifest').textContent = result.manifest;
+  $('ign').textContent = result.ignored.join('\n');
+  $('ignbox').hidden = !result.ignored.length;
+}
+const dz = $('drop');
+['dragenter', 'dragover'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => dz.addEventListener(t, e => { e.preventDefault(); dz.classList.remove('over'); }));
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => e.preventDefault());
+dz.addEventListener('drop', async e => {
+  const ens = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const out = [];
+  if (ens.length) for (const en of ens) await readEntry(en, '', out);
+  else for (const f of e.dataTransfer.files) out.push({ file: f, path: f.name });
+  take(out);
+});
+const picked = e => { take([...e.target.files].map(f => ({ file: f, path: f.webkitRelativePath || f.name }))); e.target.value = ''; };
+$('pick').addEventListener('change', picked);
+$('pickdir').addEventListener('change', picked);
+$('resname').addEventListener('input', () => { if (leaves.length) render(false); });
+$('dl').addEventListener('click', () => {
+  const blob = new Blob(RB.zipParts(result.files, result.name + '/'), { type: 'application/zip' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = result.name + '.zip';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+});
+$('copy').addEventListener('click', () => {
+  const t = $('ensure').textContent;
+  navigator.clipboard.writeText(t).then(() => { $('copy').textContent = 'تم النسخ'; setTimeout(() => $('copy').textContent = 'نسخ', 1500); }, () => {
+    const r = document.createRange(); r.selectNodeContents($('ensure')); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  });
+});
+})();
+</script>
+</body>
+</html>
